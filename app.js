@@ -41,3 +41,15 @@ if (savedData !== null) {
     }
 }
 
+async function loadPortfolios() {
+    const response = await fetch('api/portfolios.php');
+    portfolios = await response.json();
+    showPortfolioList();
+}
+
+const formData = new FormData(formElement);
+await fetch('api/portfolios.php', {
+    method: 'POST',
+    body: formData
+});
+loadPortfolios();
