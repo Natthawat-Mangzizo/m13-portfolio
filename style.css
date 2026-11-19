@@ -17,3 +17,5 @@ body {
 .form-error { color: #ffbec3; min-height: 1.3em; }
 .btn-success { background: #177966; border-color: #177966; }
 .btn-success:hover { background: #116351; border-color: #116351; }
+.portfolio-btn.active { background: #177966; color: #fff; }
+.item-card { background: #f6f7f9; }

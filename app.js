@@ -1,138 +1,139 @@
-// Challenge 4: Make It Remember
-// Challenges 1-3 already work. Your mission: save and restore the Portfolio.
-const profileForm = document.querySelector('#profile-form');
-const itemForm = document.querySelector('#item-form');
-const portfolioList = document.querySelector('#portfolio-list');
-const portfolioSelect = document.querySelector('#item-portfolio-id');
+// Module 13: Portfolios and Items are saved on the server (EC2), not in localStorage
+let portfolios = [];          // copy of the server data
+let selectedId = null;        // which Portfolio is shown on the right
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text ?? '';
-    return div.innerHTML;
+// ---------- Talk to the server ----------
+
+// Read the server's answer as JSON. If it is not JSON, PHP did not run:
+// e.g. the page was opened from GitHub Pages, Live Preview or a file,
+// or PHP is not installed on EC2.
+async function readJson(response) {
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error('The server did not answer with JSON (HTTP ' + response.status +
+            '). Open the app via http://localhost:8000 (php -S) or http://<EC2 public IP>/ — not Live Server or GitHub Pages.');
+    }
 }
 
-// แสดงรายการ Portfolios ทั้งหมดพร้อม Items ด้านใน
-function renderPortfolios(portfolios) {
-    // อัปเดตรายชื่อ Portfolio ใน Dropdown ของฟอร์มเพิ่ม Item
-    if (portfolioSelect) {
-        if (portfolios.length === 0) {
-            portfolioSelect.innerHTML = '<option value="">-- Create a portfolio first --</option>';
-        } else {
-            portfolioSelect.innerHTML = portfolios
-                .map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.displayName)}</option>`)
-                .join('');
-        }
+// GET: ask the server for all Portfolios
+async function loadPortfolios() {
+    const response = await fetch('api/portfolios.php');
+    const result = await readJson(response);
+    if (!response.ok) {
+        throw new Error(result.error || 'Could not load Portfolios');
     }
+    portfolios = result;
+    showPortfolioList();
+    showSelectedPortfolio();
+}
 
-    if (!portfolioList) return;
+// POST: send ONE new thing to the server as form fields (FormData)
+async function postForm(url, formData) {
+    const response = await fetch(url, {
+        method: 'POST',
+        body: formData                  // same fields a normal form submit would send
+    });
+    const result = await readJson(response);
+    if (!response.ok) {
+        throw new Error(result.error || 'Could not save');
+    }
+    return result;
+}
 
-    if (portfolios.length === 0) {
-        portfolioList.innerHTML = `
-            <div class="card p-4 shadow-sm border-0 rounded-4">
-                <p class="text-muted mb-0">No portfolios yet. Create your first portfolio on the right!</p>
-            </div>`;
+// ---------- Show data on the page ----------
+
+function showPortfolioList() {
+    const list = document.querySelector('#portfolio-list');
+    list.innerHTML = '';
+    document.querySelector('#list-empty').hidden = portfolios.length > 0;
+    for (const portfolio of portfolios) {
+        const button = document.createElement('button');
+        button.className = 'btn btn-light portfolio-btn text-start';
+        if (portfolio.id === selectedId) button.classList.add('active');
+        button.textContent = portfolio.displayName + ' (' + portfolio.items.length + ' items)';
+        button.addEventListener('click', () => {
+            selectedId = portfolio.id;
+            showPortfolioList();
+            showSelectedPortfolio();
+        });
+        list.appendChild(button);
+    }
+}
+
+function showSelectedPortfolio() {
+    const portfolio = portfolios.find(p => p.id === selectedId);
+    if (!portfolio) return;
+    document.querySelector('#portfolio-name').textContent = portfolio.displayName;
+    document.querySelector('#portfolio-enjoy').textContent = portfolio.whatIEnjoy;
+    document.querySelector('#portfolio-tried').textContent = portfolio.whatIveTried;
+    document.querySelector('#portfolio-curious').textContent = portfolio.whatImCuriousAbout;
+
+    const list = document.querySelector('#item-list');
+    list.innerHTML = '';
+    for (const item of portfolio.items) {
+        const card = document.createElement('div');
+        card.className = 'item-card rounded-3 p-3';
+        const title = document.createElement('h3');
+        title.className = 'h6 fw-bold mb-1';
+        title.textContent = item.title + ' · ' + item.type + ' · ' + item.date;
+        const text = document.createElement('p');
+        text.className = 'small mb-1';
+        text.textContent = item.description + ' — Skills: ' + item.skills.join(', ');
+        card.append(title, text);
+        for (const url of item.evidence) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.textContent = url;
+            link.target = '_blank';
+            link.className = 'small d-block';
+            card.appendChild(link);
+        }
+        list.appendChild(card);
+    }
+}
+
+// ---------- Forms ----------
+
+document.querySelector('#portfolio-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const error = document.querySelector('#portfolio-error');
+    try {
+        const formData = new FormData(event.target);   // every input that has a name
+        const created = await postForm('api/portfolios.php', formData);
+        error.textContent = '';
+        event.target.reset();
+        selectedId = created.id;
+        await loadPortfolios();          // read back from the server
+    } catch (e) {
+        error.textContent = e.message;
+    }
+});
+
+document.querySelector('#item-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const error = document.querySelector('#item-error');
+    if (!selectedId) {
+        error.textContent = 'Choose a Portfolio first.';
         return;
     }
-
-    portfolioList.innerHTML = portfolios.map(portfolio => {
-        const items = Array.isArray(portfolio.items) ? portfolio.items : [];
-        const itemsHtml = items.length === 0
-            ? '<p class="text-muted small mb-0">No items added yet.</p>'
-            : items.map(item => {
-                const skillsText = Array.isArray(item.skills)
-                    ? item.skills.join(', ')
-                    : (item.skills || '');
-                return `
-                    <div class="border rounded-3 p-3 mb-2 bg-light">
-                        <div class="fw-bold">${escapeHtml(item.title)}</div>
-                        ${skillsText ? `<div class="small text-success mb-1"><strong>Skills:</strong> ${escapeHtml(skillsText)}</div>` : ''}
-                        ${item.whatIDid ? `<div class="small"><strong>What I did:</strong> ${escapeHtml(item.whatIDid)}</div>` : ''}
-                        ${item.evidence ? `<div class="small"><strong>Evidence:</strong> ${escapeHtml(item.evidence)}</div>` : ''}
-                        ${item.nextStep ? `<div class="small"><strong>Next step:</strong> ${escapeHtml(item.nextStep)}</div>` : ''}
-                    </div>
-                `;
-            }).join('');
-
-        return `
-            <div class="card p-4 mb-4 shadow-sm border-0 rounded-4">
-                <div class="mb-2">
-                    <span class="badge bg-secondary-subtle text-dark">Portfolio</span>
-                </div>
-                <h3 class="h4 fw-bold">${escapeHtml(portfolio.displayName)}</h3>
-                <p class="mb-1"><strong>What I enjoy:</strong> ${escapeHtml(portfolio.whatIEnjoy)}</p>
-                <p class="mb-1"><strong>What I've tried:</strong> ${escapeHtml(portfolio.whatIveTried)}</p>
-                <p class="mb-3"><strong>What I'm curious about:</strong> ${escapeHtml(portfolio.whatImCuriousAbout)}</p>
-                <hr>
-                <h4 class="h6 fw-bold mb-2">Learning Items (${items.length})</h4>
-                ${itemsHtml}
-            </div>
-        `;
-    }).join('');
-}
-
-// 1. ดึงข้อมูล Portfolios + Items จากเซิร์ฟเวอร์
-async function loadPortfolios() {
     try {
-        const response = await fetch('api/portfolios.php');
-        const portfolios = await response.json();
-        renderPortfolios(portfolios);
-    } catch (error) {
-        console.error('Could not load portfolios:', error);
+        const formData = new FormData(event.target);
+        formData.append('portfolioId', selectedId);    // which Portfolio this Item belongs to
+        await postForm('api/items.php', formData);
+        error.textContent = '';
+        event.target.reset();
+        await loadPortfolios();          // read back from the server
+    } catch (e) {
+        error.textContent = e.message;
     }
-}
+});
 
-// 2. บันทึก Portfolio ใหม่ (POST -> api/portfolios.php)
-if (profileForm) {
-    profileForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const errorEl = document.querySelector('#profile-error');
-        const name = document.querySelector('#displayName').value.trim();
-
-        if (name === '') {
-            if (errorEl) errorEl.textContent = 'Please enter your name.';
-            return;
-        }
-        if (errorEl) errorEl.textContent = '';
-
-        const formData = new FormData(profileForm);
-        const response = await fetch('api/portfolios.php', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (response.ok) {
-            profileForm.reset();
-            await loadPortfolios();
-        } else if (errorEl) {
-            errorEl.textContent = 'Failed to save portfolio.';
-        }
-    });
-}
-
-// 3. บันทึก Learning Item ใหม่ (POST -> api/items.php)
-if (itemForm) {
-    itemForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const itemErrorEl = document.querySelector('#item-error');
-
-        const formData = new FormData(itemForm);
-        const response = await fetch('api/items.php', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (response.ok) {
-            if (itemErrorEl) itemErrorEl.textContent = '';
-            itemForm.reset();
-            await loadPortfolios();
-        } else {
-            const errData = await response.json().catch(() => ({}));
-            if (itemErrorEl) {
-                itemErrorEl.textContent = errData.error || 'Failed to save item. Please check your inputs.';
-            }
-        }
-    });
-}
-
-// โหลดข้อมูลจากเซิร์ฟเวอร์ทันทีที่เปิดหน้าเว็บ
-loadPortfolios();
+// when the page opens: show a problem instead of failing silently
+loadPortfolios().catch((e) => {
+    const message = document.querySelector('#list-empty');
+    message.hidden = false;
+    message.className = 'small text-danger mb-0';
+    message.textContent = e.message;
+});
