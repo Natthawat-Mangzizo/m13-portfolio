@@ -10,46 +10,44 @@ function showPortfolio(portfolio) {
     document.querySelector('#portfolio-curious').textContent = portfolio.whatImCuriousAbout;
 }
 
-form.addEventListener('submit', function (event) {
+async function loadPortfolios() {
+    try {
+        const response = await fetch('api/portfolios.php');
+        const portfolios = await response.json();
+
+        if (portfolios.length > 0) {
+            const latestPortfolio = portfolios[portfolios.length - 1];
+            showPortfolio(latestPortfolio);
+        }
+    } catch (error) {
+        console.error('Could not load portfolios:', error);
+    }
+}
+
+form.addEventListener('submit', async function (event) {
     event.preventDefault();
+
     const name = document.querySelector('#displayName').value.trim();
     const error = document.querySelector('#profile-error');
+
     if (name === '') {
         error.textContent = 'Please enter your name.';
         return;
     }
     error.textContent = '';
-    const portfolio = {
-        displayName: name,
-        whatIEnjoy: document.querySelector('#enjoy').value.trim(),
-        whatIveTried: document.querySelector('#tried').value.trim(),
-        whatImCuriousAbout: document.querySelector('#curious').value.trim()
-    };
-    showPortfolio(portfolio);
 
-const json = JSON.stringify(portfolio);
-    localStorage.setItem(STORAGE_KEY, json);
+    const formData = new FormData(form);
+    formData.set('displayName', name);
+    formData.set('whatIEnjoy', document.querySelector('#enjoy').value.trim());
+    formData.set('whatIveTried', document.querySelector('#tried').value.trim());
+    formData.set('whatImCuriousAbout', document.querySelector('#curious').value.trim());
+
+    await fetch('api/portfolios.php', {
+        method: 'POST',
+        body: formData
+    });
+
+    await loadPortfolios();
 });
 
-const savedData = localStorage.getItem(STORAGE_KEY);
-if (savedData !== null) {
-    try {
-        const savedPortfolio = JSON.parse(savedData);
-        showPortfolio(savedPortfolio);
-    } catch (error) {
-        console.error('Could not restore the saved Portfolio:', error);
-    }
-}
-
-async function loadPortfolios() {
-    const response = await fetch('api/portfolios.php');
-    portfolios = await response.json();
-    showPortfolioList();
-}
-
-const formData = new FormData(formElement);
-await fetch('api/portfolios.php', {
-    method: 'POST',
-    body: formData
-});
 loadPortfolios();
